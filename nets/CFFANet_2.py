@@ -13,35 +13,6 @@ from torch import Tensor
 import torch.nn.init as init
 nonlinearity = partial(F.relu, inplace=True)
 
-# def weight_init(module):
-#     for n, m in module.named_children():
-#         if isinstance(m, nn.Conv2d):
-#             torch.nn.init.kaiming_normal_(m.weight)
-#             if m.bias is not None:
-#                 nn.init.constant_(m.bias, 0.0)
-#         elif isinstance(m, (nn.BatchNorm2d, nn.InstanceNorm2d)):
-#             nn.init.constant_(m.weight, 1.0)
-#             if m.bias is not None:
-#                 nn.init.constant_(m.bias, 0.0)
-#         elif isinstance(m, nn.Linear):
-#             torch.nn.init.kaiming_normal_(m.weight)
-#             if m.bias is not None:
-#                 nn.init.constant_(m.bias, 0.0)
-#         elif isinstance(m, nn.Sequential):
-#             weight_init(m)
-#         elif isinstance(m, nn.ReLU):
-#             pass
-#         elif isinstance(m, nn.AdaptiveAvgPool2d):
-#             pass
-#         elif isinstance(m, nn.AdaptiveMaxPool2d):
-#             pass
-#         elif isinstance(m, nn.Upsample):
-#             pass
-#         elif isinstance(m, nn.Sigmoid):
-#             pass
-#         elif isinstance(m, nn.MaxPool2d):
-#             pass
-
 
 def conv3otherRelu(in_planes, out_planes, kernel_size=None, stride=None, padding=None):
     # 3x3 convolution with padding and relu
@@ -65,70 +36,6 @@ def conv3otherRelu(in_planes, out_planes, kernel_size=None, stride=None, padding
 
 def l2_norm(x):
     return torch.einsum("bcn, bn->bcn", x, 1 / torch.norm(x, p=2, dim=-2))
-
-class PAM_Module(Module):
-    def __init__(self, in_places, scale=8, eps=1e-6):
-        super(PAM_Module, self).__init__()
-        self.gamma = Parameter(torch.zeros(1))
-        self.in_places = in_places
-        # self.exp_feature = exp_feature_map
-        # self.tanh_feature = tanh_feature_map
-        self.l2_norm = l2_norm
-        self.eps = eps
-
-        self.query_conv = Conv2d(in_channels=in_places, out_channels=in_places // scale, kernel_size=1)
-        self.key_conv = Conv2d(in_channels=in_places, out_channels=in_places // scale, kernel_size=1)
-        self.value_conv = Conv2d(in_channels=in_places, out_channels=in_places, kernel_size=1)
-
-    def forward(self, x):
-        # Apply the feature map to the queries and keys
-        batch_size, chnnels, width, height = x.shape
-        Q = self.query_conv(x).view(batch_size, -1, width * height)
-        K = self.key_conv(x).view(batch_size, -1, width * height)
-        V = self.value_conv(x).view(batch_size, -1, width * height)
-
-        Q = self.l2_norm(Q).permute(-3, -1, -2)
-        K = self.l2_norm(K)
-
-        tailor_sum = 1 / (width * height + torch.einsum("bnc, bc->bn", Q, torch.sum(K, dim=-1) + self.eps))
-        value_sum = torch.einsum("bcn->bc", V).unsqueeze(-1)
-        value_sum = value_sum.expand(-1, chnnels, width * height)
-
-        matrix = torch.einsum('bmn, bcn->bmc', K, V)
-        matrix_sum = value_sum + torch.einsum("bnm, bmc->bcn", Q, matrix)
-
-        weight_value = torch.einsum("bcn, bn->bcn", matrix_sum, tailor_sum)
-        weight_value = weight_value.view(batch_size, chnnels, height, width)
-
-        return (x + self.gamma * weight_value).contiguous()
-
-
-
-
-# class SpatialAttention(nn.Module):
-#     def __init__(self, kernel_size=3, dropout_prob=0.2):
-#         super(SpatialAttention, self).__init__()
-#
-#         assert kernel_size in (3, 7), 'kernel size must be 3 or 7'
-#         padding = 3 if kernel_size == 7 else 1
-#
-#         self.conv1 = nn.Conv2d(1, 1, kernel_size, padding=padding, bias=False)
-#         self.dropout = nn.Dropout2d(p=dropout_prob)
-#         self.sigmoid = nn.Sigmoid()
-#
-#     def forward(self, x):
-#         max_out, _ = torch.max(x, dim=1, keepdim=True)
-#         x = max_out
-#         x = self.conv1(x)
-#         x = self.dropout(x)
-#         return self.sigmoid(x)
-
-
-
-   # def init_weight(self):
-   #     nn.init.xavier_uniform_(self.conv1.weight)
-
-
 
 
 class BasicConv2d(nn.Module):
@@ -162,7 +69,6 @@ class CG_block(nn.Module):
 
         return x
 
-
 class DWCon(nn.Module):
     def __init__(self, in_planes, out_planes, kernel_size=3, padding=1, dilation=1):
         super(DWCon, self).__init__()
@@ -179,78 +85,6 @@ class DWCon(nn.Module):
         x = self.relu(x)
         return x
 
-# class DWCon(nn.Module):
-#     def __init__(self, in_planes, out_planes):
-#         super(DWCon, self).__init__()
-#         self.depthwise = nn.Conv2d(in_planes, in_planes, kernel_size=3, stride=1, padding=1, groups=in_planes)
-#         self.pointwise = nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=1)
-#         self.groupN = nn.GroupNorm(4, out_planes)
-#         self.bn = nn.BatchNorm2d(out_planes, eps=1e-5, momentum=0.01, affine=True)
-#         self.relu = nn.ReLU()
-#
-#
-#     def forward(self, x):
-#         x = self.depthwise(x)
-#         x = self.pointwise(x)
-#         x = self.groupN(x)
-#         x = self.relu(x)
-#         return x
-
-
-#-----------------------------------------------------
-
-#----------------------------------------------------------------------------------------
-# class MFA(nn.Module):
-#     def __init__(self, in_channels, out_channels, groups=4, dropout_rate=0.2):
-#         super(MFA, self).__init__()
-#         self.cv1 = nn.Sequential(
-#             nn.Conv2d(in_channels, 256, kernel_size=1),
-#             nn.BatchNorm2d(256),
-#             nn.ELU(inplace=True)  # Using ELU activation function
-#         )
-#         self.groupN = nn.GroupNorm(groups, 128)
-#         self.dwconv1 = GroupedDepthwiseSeparableConv(128, 128)
-#         self.dwconv2 = GroupedDepthwiseSeparableConv(256, 256)
-#         self.dropout = nn.Dropout2d(p=dropout_rate)
-#         self.sigmoid = nn.Sigmoid()
-#
-#        # self.init_weight()
-#
-#     def forward(self, x):
-#         x = self.cv1(x)
-#         x = channel_shuffle(x, 4)  # channel shuffle
-#         b, c, H, W = x.size()
-#
-#         channels_per_group = c // 2
-#         x1, x2 = torch.split(x, channels_per_group, dim=1)
-#
-#         x1 = self.groupN(x1)
-#         x2 = self.groupN(x2)
-#
-#         x1 = self.dwconv1(x1)
-#         x2 = self.dwconv1(x2)
-#
-#         x1 = self.sigmoid(x1)
-#         x2 = self.sigmoid(x2)
-#
-#         x1 = x1 * x1
-#         x2 = x2 * x2
-#
-#         x = torch.cat([x1, x2], dim=1)
-#         x = self.dwconv2(x)
-#         x = self.dropout(x)
-#
-#         return x
-
-    # def init_weight(self):
-    #     for m in self.modules():
-    #         if isinstance(m, nn.Conv2d):
-    #             nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-    #             if m.bias is not None:
-    #                 nn.init.constant_(m.bias, 0)
-    #         elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.GroupNorm):
-    #             nn.init.constant_(m.weight, 1)
-    #             nn.init.constant_(m.bias, 0)
 #----------------------------------------------------------------------------------------
 class MFA(nn.Module):
     def __init__(self):
@@ -383,58 +217,15 @@ class SpatialAttention(nn.Module):
         x = self.conv1(x)
         return self.sigmoid(x)
 
-# class ESA_block(nn.Module):
-#     def __init__(self, in_ch, split_factor=16, dropout_prob=0.2):
-#         super(ESA_block, self).__init__()
-#
-#         self.SA1 = SpatialAttention()
-#         self.SA2 = SpatialAttention()
-#
-#         self.weight = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
-#         self.sa_fusion = nn.Sequential(
-#             nn.Conv2d(2, 1, kernel_size=3, padding=1),
-#             nn.Sigmoid()
-#         )
-#
-#     def forward(self, x):
-#         # Channel shuffle
-#         x = channel_shuffle(x, 4)
-#
-#         # Split channels
-#         b, c, H, W = x.size()
-#         channels_per_group = c // 2
-#         x1, x2 = torch.split(x, channels_per_group, dim=1)
-#
-#         # Apply CAM Module and PAM
-#         s1 = self.SA1(x1)
-#         s2 = self.SA2(x2)
-#
-#         # Concatenate attention maps
-#         concat_att_map = torch.cat([s1, s2], dim=1)
-#
-#         # Apply attention fusion
-#         attention_fused = self.sa_fusion(concat_att_map)
-#
-#         # Apply attention to input feature maps
-#         out = attention_fused * x + x
-#
-#         return out
-
 class ESA_block(nn.Module):
     def __init__(self, in_ch, split_factor=16, dropout_prob=0.2):
         super(ESA_block, self).__init__()
-
-       # self.conv2d_2 = nn.Conv2d(in_ch // 2, in_ch // 2, kernel_size=3, padding=1, dilation=2)
-       # self.conv2d_4 = nn.Conv2d(in_ch // 2, in_ch // 2, kernel_size=3, padding=1, dilation=4)
 
         self.conv2d_2 = DWCon(in_ch // 2, in_ch // 2, kernel_size=3, padding=2, dilation=2)  # Smaller kernel size
         self.conv2d_4 = DWCon(in_ch // 2, in_ch // 2, kernel_size=3, padding=4, dilation=4)  # Larger dilation rate
 
         self.SA1 = SpatialAttention()
         self.SA2 = SpatialAttention()
-
-       # self.SA1 = PAM_Module(in_ch // 2)
-      #  self.SA2 = PAM_Module(in_ch // 2)
 
         self.groupN = nn.GroupNorm(2, in_ch // 2)
 
@@ -493,46 +284,6 @@ class Att_block_1(nn.Module):
         out = self.PReLU(out)
         out = self.dropout(out)  # Applying dropout here
         return out
-
-# class Att_block_1(nn.Module):
-#     def __init__(self, in_channel):
-#         super(Att_block_1, self).__init__()
-#         self.conv1 = conv3otherRelu(in_channel, in_channel)
-#         self.avg_pool = nn.AvgPool2d((3, 3), stride=1, padding=1)
-#         self.conv_1 = nn.Conv2d(in_channel, in_channel, kernel_size=1, stride=1, padding=0)
-#         self.bn1 = nn.BatchNorm2d(in_channel)
-#         self.sigmoid = nn.Sigmoid()
-#         self.PReLU = nn.PReLU(in_channel)
-#
-#
-#     def forward(self, x):
-#         edge = x - self.avg_pool(x)  # Xi=X-Avgpool(X)
-#         weight = self.sigmoid(self.bn1(self.conv_1(edge)))
-#         out = weight * x + x
-#         out = self.PReLU(out)
-#
-#        # x_out = F.interpolate(out, scale_factor=2, mode='bilinear', align_corners=True)
-#
-#         return out
-
-
-# class Att_block_2(nn.Module):
-#     def __init__(self, in_ch):
-#         super(Att_block_2, self).__init__()
-#         self.conv1 = conv3otherRelu(in_ch, in_ch)
-#
-#       #  self.PAM = PAM_Module(in_ch)
-#         self.CAM = CAM_Module()
-#
-#         self.conv2P = nn.Sequential(nn.Dropout2d(0.1, False), conv3otherRelu(in_ch, in_ch, 1, 1, 0))
-#         self.conv2C = nn.Sequential(nn.Dropout2d(0.1, False), conv3otherRelu(in_ch, in_ch, 1, 1, 0))
-#         self.conv3 = nn.Sequential(nn.Dropout2d(0.1, False), conv3otherRelu(in_ch, in_ch, 1, 1, 0))
-#
-#     def forward(self, x):
-#         x = self.conv1(x)
-#         x = self.conv2C(self.CAM(x))
-#         return self.conv3(x)
-
 
 
 class DecoderBlock(nn.Module):
@@ -601,7 +352,7 @@ class CFFANet_2(nn.Module):
 
         self.esa_4 = ESA_block(96)
         self.esa_3 = ESA_block(32)
-        #self.ESAM_3 = ESAM(filters[2], 32)
+
         self.attention2 = Att_block_1(24)
         self.attention1 = Att_block_1(16)
 
@@ -618,12 +369,7 @@ class CFFANet_2(nn.Module):
 
     def forward(self, input):
         # Encoder
-        # input 256*256*3
-        # conv1 128*128*16
-        # conv2 64*64*24
-        # conv3 32*32*32
-        # conv4 16*16*96
-        # conv5 8*8*320
+
         x = self.layer1(input)
 
         e1 = self.layer2(x)  # x / 2   # torch.Size([1, 16, 128, 128]
@@ -636,7 +382,6 @@ class CFFANet_2(nn.Module):
         l7 = self.layer7(e4)  # 160, x / 32
         e5 = self.layer8(l7)  # 320, x / 32   torch.Size([1, 320, 8, 8])
 
-       # print(e1.shape)
 
         encoder_booster = self.MFA_block(e5)
 
@@ -645,56 +390,33 @@ class CFFANet_2(nn.Module):
 
         #------------- Decoder -------------------
         d5 = self.decoder5(encoder_booster)  # torch.Size([1, 128, 16, 16])
-       # print(d5.shape)
 
         # Decoder 4
         d4_ESAM_4 = self.esa_4(e4)  # torch.Size([1, 256, 16, 16])
-       # print(d4_ESAM_4.shape)
 
         d4_final = torch.cat([d5, d4_ESAM_4], dim=1)
-       # print(d4_final.shape)
 
         # Decoder 3
         d4 = self.decoder4(d4_final)  # torch.Size([1, 128, 16, 16])
-       # print(d4.shape)
 
         d3_ESAM_3 = self.esa_3(e3)  # torch.Size([1, 256, 16, 16])
-       # print(d3_ESAM_3.shape)
 
         d3_final = torch.cat([d4, d3_ESAM_3], dim=1)
-       # print(d3_final.shape)
-
-        #----------------------------
-
-      #  print(e2_att.shape)
 
         d3= self.decoder3(d3_final)
-       # print(d3.shape)
 
         e2_att = self.attention2(e2)
-       # print(e2_att.shape)
-
 
         d2_final = torch.cat([d3, e2_att], dim=1)
-
-        #----------------------------
-
         d2 = self.decoder2(d2_final)
-       # print(d2.shape)
-
         e1_att = self.attention1(e1)
-       # print(e1_att.shape)
-
         d1_final = torch.cat([d2, e1_att], dim=1)
-       # print(d1_final.shape)
 
         out = self.finaldeconv1(d1_final)  # torch.Size([1, 16, 256, 256])
-       # print(out.shape)
+
         out = self.finalrelu1(out)
         out = self.finalconv2(out)
-        # out = self.finalrelu2(out)
 
-        # d3 = F.interpolate(d3, size=x.size()[2:], mode='bilinear', align_corners=False)
         out = torch.sigmoid(out)
         return out
 
